@@ -20,14 +20,17 @@ dp = Dispatcher()
 # функция для генерации стихотворений и хокку через perplexity
 async def generate_poem_perplexity(theme: str, poem_type: str) -> str:
     try:
-        api_key = os.getenv('PERPLEXITY_API_KEY')
-        url = "https://api.perplexity.ai/chat/completions"
-
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        if not api_key:
+            return "Error: Don't have API key"
+        
+        url = "https://api.deepseek.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
 
+        # настраиваем контент и промт в зависимости от типа 
         if poem_type == "Стихотворение":
             content = (
                 "Ты - талантливый поэт, мастер русской поэзии. "
@@ -94,7 +97,7 @@ async def generate_poem_perplexity(theme: str, poem_type: str) -> str:
 
 
         payload = {
-            "model": "pplx-70b-online", #"llama-3.1-sonar-small-128k-online", #"llama-3.1-sonar-small-128k-online", #"mistral-7b-instruct", #"pplx-7b-chat",  # можно использовать другие модели: pplx-70b-chat, pplx-7b-chat, mistral-7b-instruct
+            "model": "deepseek-chat",
             "messages": [
                 {
                     "role": "system",
@@ -106,19 +109,26 @@ async def generate_poem_perplexity(theme: str, poem_type: str) -> str:
                 }
             ],
             "max_tokens": 300,  # добавляем ограничение на длину ответа
-            "temperature": temp  # добавляем параметр температуры
+            "temperature": temp,  # добавляем параметр температуры
+            "stream": False
         }
 
         async with AsyncClient(timeout=30.0) as client:
             for attempt in range(3): # добавляем повторные попытки
                 try:
                     response = await client.post(url, json=payload, headers=headers)
-                    if response.status_code == 200:
-                        result = response.json()
-                        return result['choices'][0]['message']['content']
-                    else:
-                        await asyncio.sleep(1) # пауза перед повторной попыткой
+                    response.raise_for_status()
+
+                    result = response.json()
+                    if 'choices' in result and result['choices']:
+                        content = result['choices'][0]['message']['content']
+                        if content: 
+                            return content.strip()
+                        
+                    raise ValueError("Uncorrect response from API")
+                    
                 except Exception as e:
+                    print(f"Попытка {attempt + 1} не удалась: {str(e)}")
                     if attempt == 2: # последняя попытка
                         return f"Произошла ошибка при генерации. Пожалуйста, попробуйте повторить запрос позже. ({str(e)})"
                     await asyncio.sleep(1)
